@@ -21,10 +21,12 @@ class CoachSpider(scrapy.Spider):
             raise Exception("Run PeopleHistoryRosterStats Spider....") 
 
         
-        for url in self._list: 
+        for url in _list: 
             yield scrapy.Request(url=url['link'], 
                                  callback=self.parse, 
-                                 meta={'name':url['txt']}
+                                 meta={'name':url['txt'], 
+                                       'team':url['team'],
+                                      }
                                 )
     
     def parse(self, response):         
@@ -39,6 +41,7 @@ class CoachSpider(scrapy.Spider):
             stop_index = len(tables[1].columns)
         tables[1] = tables[1][:-1].iloc[:,:stop_index].copy()   
         tables[1]['Name'] = response.meta['name']
+        tables[1]['Team'] = response.meta['team']
 
 	# Create dynamic items
         field_list = tables[1].columns
