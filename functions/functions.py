@@ -1,61 +1,27 @@
 import datetime, re
 import pandas as pd
 
-def createvariables(data):
-    """Create Opponent, Home, Win/Loss, Overtime, and Scores
-    
-    """
-    regexs = {'WL': "[WL]",
-              'team': ["\d+\s\-", "\d+"],
-              'opponent_score':["\-\s\d+", '\d+'],
-              'OT':["\(\d+OT\)", "\d+"], 
-              'opponent':['[\w\s]+\.?\s\@\s\w+']
-             }
-    
-    # Opponent 
-    if '@' in data['Opponent']: 
-        search = re.search(regexs['opponent'][0], data['Opponent']) 
-        if search: 
-            opponent = data['Opponent'].split("@")[0].strip()
-            home = 0
-        else: 
-            opponent = data['Opponent'].replace("@","").strip()
-            home = 0
-    else: 
-        opponent = data['Opponent']
-        home = 1
-    
-    
-    # Win/Loss
-    WinLoss = re.search(regexs['WL'], data['Result']).group()
-    
-    # Overtime 
-    Overtime = 0
-    re_ot = re.search(regexs['OT'][0], data['Result'])
-    if re_ot:
-        Overtime = re.search(regexs['OT'][1], re_ot.group()).group()
-        
-    # Team Score
-    team_score = None
-    re_team = re.search(regexs['team'][0], data['Result'])
-    if re_team:
-        team_score = re.search(regexs['OT'][1], re_team.group()).group()
-        
-    # Opponent Score
-    opponent_score = None
-    re_opponent = re.search(regexs['opponent_score'][0], data['Result'])
-    if re_opponent:
-        opponent_score = re.search(regexs['OT'][1], re_opponent.group()).group()
-        
-    return pd.Series([opponent, home, WinLoss, Overtime, team_score, opponent_score])    
-
-
 def yrRecode(data): 
+    """ Returns a numeric value for Fr, So, Jr, Sr
+
+        Keyword arguments: 
+
+        data : Pandas ROW (series) 
+    """
     yr = {'Fr':0, 'So':1, 'Jr':2, 'Sr':3}
     return yr[data]
 
-
 def teamhistory(team, year, duration, history): 
+    """ Calcuates wins, losses and wins/(wins+losses) 
+        
+        Keyword arguments: 
+
+        team : team name 
+        year : four digit year 
+        duration : how many years of history to look at 
+        history : history data frame 
+
+    """
     team = team
     target_year = year
     out = []
@@ -73,8 +39,14 @@ def teamhistory(team, year, duration, history):
     out.extend([wins, losses, wins/(wins+losses)])
     return pd.Series(out)
 
+
 def fixTOP(row):
-    """ Fix time of possession"""
+    """ Standardize the time of possession so it's all hh:mm:ss time delta format 
+        
+        Keyword arguments: 
+
+        row : row data 
+    """
     if isinstance(row, str) == True and ":" in row: 
         _all = row.split(":")
         _min = int(_all[0]) * 60 
@@ -88,7 +60,14 @@ def fixTOP(row):
 
 
 def removeSlashes(row, cols):
-    """ Remove slashes from some of the variables"""
+    """ Remove slashes from variables
+
+        Keyword arguments: 
+ 
+        row : row data 
+        cols : cols to remove slashes from 
+
+    """
     out = []
     for cell in cols[3:]:
         if cell == 'TOP': 
@@ -101,6 +80,16 @@ def removeSlashes(row, cols):
     return pd.Series(out)
 
 def coach_history(data, year, coaches): 
+    """ Create coach history  
+ 
+        Keyword arguments: 
+
+        data : data
+        year : year of interest
+        coaches : coaches dataframe 
+
+    """
+
     t = []
     if isinstance(data, list) and len(data) >=1 :
         for coach in data: 
@@ -128,19 +117,30 @@ def coach_history(data, year, coaches):
                         })
     return out
 
-def previous_yrs(team, year, game, cols, final, debug = False): 
-    cols = ['Team', 'year_y', 'count'] + cols
+def previous_yrs(team, year, game, cols, gamestats, debug = False): 
+    """ Calculate the previous years 
+
+        Keyword arguments: 
+
+        team : team of interest
+        year : year of interest
+        cols : columns of interest 
+        gamestats : gamestats dataframe 
+        debug: if Debug = True then return a DF, if false return the average 
+
+    """
+    cols = ['Team', 'year', 'gamenumber'] + cols
     out = []
     if game != 1: 
-        y = final[cols][(final['Team'] == team) & 
-                        (final['year_y'] == year) & 
-                        (final['count'] <= game)
+        y = gamestats[cols][(gamestats['Team'] == team) & 
+                        (gamestats['year'] == year) & 
+                        (gamestats['gamenumber'] <= game)
                        ]
 
         out.append(y)
     if game <= 3:
-        x = final[cols][(final['Team'] == team) & 
-                        (final['year_y'] == year - 1)
+        x = gamestats[cols][(gamestats['Team'] == team) & 
+                        (gamestats['year'] == year - 1)
                        ]
         
         out.append(x)
@@ -155,34 +155,57 @@ def previous_yrs(team, year, game, cols, final, debug = False):
 
 
 
-def opponent(data, opponentNameVar):
+def extract_name(data, varname):
+    """ Extract team name from variable 
+        
+        Keyword arguments: 
+        data : df
+        varname : variable name of interest
+        
+    """
+  
     regex = '[\w\s]+\.?\s\@\s\w+'
 
     # Opponent 
-    if '@' in data[opponentNameVar]: 
-        search = re.search(regex, data[opponentNameVar]) 
+    if '@' in data[varname]: 
+        search = re.search(regex, data[varname]) 
         if search: 
-            opponent = data[opponentNameVar].split("@")[0].strip()
+            opponent = data[varname].split("@")[0].strip()
         else: 
-            opponent = data[opponentNameVar].replace("@","").strip()
+            opponent = data[varname].replace("@","").strip()
     else: 
-        opponent = data[opponentNameVar]
+        opponent = data[varname]
     return opponent.strip()
 
-def opp(team, date, year, cols, final, debug = False):
-    """ Calculate the game-by-game stats for the opponents"""
-    game = final[(final['Team'] == team) &  (final['Date'] == date) ]['count'].values[0]
+def opponent_stats(team, date, year, cols, gamestats, debug = False):
+    """ Calculate the game-by-game stats for the opponents
+
+        Keyword arguments: 
+
+        team : team of interest
+        date : date of itnerest
+        year : year of interest
+        cols : columns of interest 
+        gamestats : gamestats dataframe 
+        debug: if Debug = True then return a DF, if false return the average 
+
+    """
+    game = gamestats[(gamestats['Team'] == team) &  (gamestats['Date'] == date) ]['gamenumber'].values[0]
     return previous_yrs(team = team, 
                         year = year, 
                         game = game, 
                         cols = cols, 
-                        final = final,
+                        gamestats = gamestats,
                         debug = False
                        )
 
 
 def create_variables(data):
-    """Create Opponent, Home, Win/Loss, Overtime, and Scores
+    """Create Home, Win/Loss variables 
+
+       Keyword arguments: 
+
+       data : target variable 
     
     """
     regexs = {'WL': "[WL]",
